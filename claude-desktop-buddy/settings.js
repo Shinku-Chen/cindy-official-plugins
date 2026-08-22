@@ -29,6 +29,8 @@
     } catch (e) {}
   }
 
+  var pendingConnect = false; // 点击「配对/重新连接」后置 true，直到连接结果出来才恢复
+
   // 统一按钮查找：id 可能被宿主剥离/改写，用 getElementById + 兜底（按内容找第一个 button）。
   function findBtn() {
     let b = null;
@@ -61,7 +63,17 @@
     if (status) status.textContent = connected
       ? '已连接' + (st.status.device_name ? ' · ' + st.status.device_name : '')
       : '未连接';
-    if (btn) { btn.textContent = connected ? '已连接' : '配对'; btn.disabled = connected; }
+    // 连接后按钮显示「重新连接」且可点（再次触发连接/刷新链路）；未连接显示「配对」。
+    // 点击后 pendingConnect 期间保持「连接中…」直到结果，避免被轮询重置。
+    if (btn) {
+      if (pendingConnect) {
+        btn.textContent = '连接中…';
+        btn.disabled = false;
+      } else {
+        btn.textContent = connected ? '重新连接' : '配对';
+        btn.disabled = false;
+      }
+    }
     // 电量：来自硬件 status 报告（st.hwStatus.bat.pct / bat.mV），未拿到时不显示
     if (battery && st && st.hwStatus && st.hwStatus.bat) {
       const bat = st.hwStatus.bat;
@@ -78,11 +90,12 @@
       diag({ buttonBound: Date.now() });
       btn.addEventListener('click', async function () {
         diag({ click: Date.now() });
-        btn.textContent = '配对中…';
-        btn.disabled = true;
+        // 配对 与 重新连接 都触发 connect（重连会重新扫描/连接硬件）
+        pendingConnect = true;
         const cur = await readKV();
         await writeKV({ cmd: 'connect', seq: Date.now(), status: cur.status || null, heartbeat: cur.heartbeat || null });
-        setTimeout(function () { btn.textContent = '配对'; btn.disabled = false; }, 15000);
+        // 15s 兜底恢复（连接扫描约几秒；若正常 render 会在状态变化时更早恢复）
+        setTimeout(function () { pendingConnect = false; }, 15000);
       });
     } else {
       diag({ buttonMissing: true, html: (document.body && document.body.innerHTML || '').slice(0, 200) });
@@ -107,8 +120,16 @@
   }
 
   // ---- 再启动轮询渲染状态 ----
+  let lastConnected = null;
   async function poll() {
     const st = await readKV();
+    const connected = !!(st && st.status && st.status.connected);
+    if (lastConnected === null) lastConnected = connected;
+    // 连接状态发生变化（pending → 结果），清 pendingConnect，让按钮回到「配对/重新连接」
+    if (pendingConnect && connected !== lastConnected) {
+      pendingConnect = false;
+    }
+    lastConnected = connected;
     render(st);
   }
   poll(); // 立即刷一次

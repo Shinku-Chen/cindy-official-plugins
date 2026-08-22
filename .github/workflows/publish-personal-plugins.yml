@@ -25,7 +25,7 @@ jobs:
       has_plugins: ${{ steps.package.outputs.has_plugins }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload artifact
         if: steps.package.outputs.has_plugins == '1'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cindy-plugins
           path: dist/**/*.cindy

@@ -19,6 +19,9 @@
     },
     "buddy_disconnect": {
       "description": "Disconnect the current Claude Desktop Buddy hardware device. Stops pushing state to the device; the panel still shows local session state. Returns success idempotently even if no hardware is connected."
+    },
+    "buddy_unpair": {
+      "description": "Unpair the Claude Desktop Buddy hardware from the host's Bluetooth. Sends an unpair command to the device; the hardware shows a confirmation and requires the user to press OK on the device before it deletes the bond and disconnects. After unpairing, the next connection needs a fresh pairing code. More reliable than the panel/settings button (stable tool channel)."
     }
   }
 }

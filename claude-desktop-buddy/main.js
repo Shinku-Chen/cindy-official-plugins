@@ -160,6 +160,17 @@ async function pushToHardware() {
   }
 }
 
+// 解除配对：给硬件发 {"cmd":"unpair"}，硬件弹确认、用户在硬件按键确认后删除绑定断开。
+// 供工具(buddy_unpair)与 /kv 命令共用。
+async function doUnpair() {
+  try {
+    const res = await cindy.node.request({ method: 'buddy.send', params: { json: '{"cmd":"unpair"}' } });
+    return { ok: !!(res && res.ok), message: (res && res.message) || null };
+  } catch (e) {
+    return { ok: false, message: e.message || String(e) };
+  }
+}
+
 // ---- 保活：硬件要求 30s 内存活、每 10s 一条 keepalive ----
 let keepaliveTimer = null;
 function startKeepalive() {
@@ -404,6 +415,16 @@ async function handleToolCall(msg) {
     return cindy.send({ type: 'tool-result', callId, ok: true, result: res.result || { status: 'disconnected' } });
   }
 
+  if (tool === 'buddy_unpair') {
+    // 解除配对：发 {"cmd":"unpair"} 给硬件，硬件弹确认、用户在硬件按键确认后删除绑定。
+    // 工具链路比设置页按钮更可靠（Cindy 设置页点击事件可能受限）。
+    const r = await doUnpair();
+    if (r.ok) {
+      return cindy.send({ type: 'tool-result', callId, ok: true, result: { sent: true, note: '已发送解除配对请求，请在硬件上按 OK 确认。' } });
+    }
+    return cindy.send({ type: 'tool-result', callId, ok: false, errorCode: 'UNPAIR_FAILED', message: r.message || '发送解除配对失败' });
+  }
+
   return cindy.send({ type: 'tool-result', callId, ok: false, errorCode: 'UNKNOWN_TOOL', message: '未知工具: ' + tool });
 }
 
@@ -646,12 +667,9 @@ async function kvTick() {
         const data = Object.assign({}, cur, { cmd: null, status: { connected: false } });
         try { await fetch('/kv', { method: 'PUT', body: JSON.stringify(data) }); } catch (e) {}
       } else if (cfg.cmd === 'unpair') {
-        // 解除配对：给硬件发 {"cmd":"unpair"}，硬件弹确认、用户在硬件按键确认后删除绑定
-        try {
-          await cindy.node.request({ method: 'buddy.send', params: { json: '{"cmd":"unpair"}' } });
-        } catch (e) {}
+        await doUnpair();
         const cur = await kvRead();
-        const data = Object.assign({}, cur, { cmd: null, unpair_sent: Date.now() });
+        const data = Object.assign({}, cur, { cmd: null });
         try { await fetch('/kv', { method: 'PUT', body: JSON.stringify(data) }); } catch (e) {}
       }
     }

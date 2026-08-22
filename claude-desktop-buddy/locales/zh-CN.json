@@ -19,6 +19,9 @@
     },
     "buddy_disconnect": {
       "description": "断开当前 Claude Desktop Buddy 硬件连接。断开后停止向硬件发送状态，面板仍显示本地会话状态。没有已连接的硬件时返回幂等成功。"
+    },
+    "buddy_unpair": {
+      "description": "解除 Claude Desktop Buddy 硬件与主机的蓝牙配对。向硬件发送解除配对命令，硬件屏幕会弹出确认，需用户在硬件上按 OK 确认后才会删除绑定并断开。解除成功后下次连接需要重新输入配对码。比面板/设置页按钮更可靠（工具链路稳定）。"
     }
   }
 }
