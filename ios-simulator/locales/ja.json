@@ -1,0 +1,5 @@
+{
+  "name": "iOS シミュレータ",
+  "description": "Cindy 上で iOS アプリをビルドして実行し、シミュレータ画面をリアルタイムで確認しながら、タップや文字入力、動作確認、問題の調査ができます。",
+  "whenToUse": "まず Cindy の内蔵シミュレータを使用します。Host が未導入・無効化・Admission 拒否を示し、runningInstanceCount=0 で Cindy ランタイム／クリーンアップ／lease／generation 遷移がなく、指定された外部ワークフロー・正確なデバイス ID・元のタスクが揃う場合だけフォールバックします。それ以外は停止します。"
+}

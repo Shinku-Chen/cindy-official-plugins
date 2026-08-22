@@ -40,7 +40,9 @@
       }
     },
     "taptap-maker": {
-      "audience": "all"
+      "audience": {
+        "emails": []
+      }
     },
     "cindy-notion": {
       "audience": "all"
@@ -57,6 +59,12 @@
       "audience": {
         "emails": []
       }
+    },
+    "ios-simulator": {
+      "audience": {
+        "emails": []
+      },
+      "tier": "builtin"
     }
   }
 }
