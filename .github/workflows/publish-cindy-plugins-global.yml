@@ -16,7 +16,7 @@ concurrency:
 jobs:
   detect:
     name: Detect plugins to publish
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.repository == 'makecindy/cindy-official-plugins'
     runs-on: ubuntu-latest
     outputs:
       plugins: ${{ steps.changes.outputs.result }}

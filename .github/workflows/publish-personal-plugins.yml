@@ -1,0 +1,73 @@
+name: Publish Personal Plugins (GitHub Release)
+
+# 用户个人空间的插件发布：只打包 ghost.json 带 personal:true 的插件，
+# 生成 .cindy 并上传到 GitHub Release。
+# 官方 publish workflow(publish-cindy-plugins*.yml) 因无官方平台 secrets 在 fork 不会生效，
+# 本 workflow 是个人插件的发布通道。
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**/ghost.json'
+      - '**/main.js'
+      - '**/settings.*'
+      - '**/node/worker.*'        # 任一插件源码变更即触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      has_plugins: ${{ steps.package.outputs.has_plugins }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2d7b5c0e1d8e # v4
+        with:
+          fetch-depth: 0
+
+      - name: Package personal plugins into .cindy
+        id: package
+        run: |
+          set -euo pipefail
+          # 找到所有含 ghost.json 且声明 personal:true 的插件目录
+          found=0
+          while IFS= read -r dir; do
+            dir="${dir#./}"
+            if [ "$(jq -r '.personal // false' "${dir}/ghost.json")" = "true" ]; then
+              mod="$(jq -r '.id // .name' "${dir}/ghost.json")"
+              mkdir -p "dist/${dir}"
+              git -c core.autocrlf=false archive --format=zip \
+                --output="dist/${dir}/${mod}.cindy" "HEAD:${dir}"
+              echo "Packaged: ${dir} -> dist/${dir}/${mod}.cindy"
+              found=1
+            fi
+          done < <(find . -name ghost.json -not -path '*/node_modules/*' -exec dirname {} \; | sort -u)
+          echo "has_plugins=${found}" >> "$GITHUB_OUTPUT"
+          find dist -name '*.cindy' 2>/dev/null | sed 's/^/  /'
+
+      - name: Upload artifact
+        if: steps.package.outputs.has_plugins == '1'
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b6bb3edf3c # v4
+        with:
+          name: cindy-plugins
+          path: dist/**/*.cindy
+
+      - name: Create release (if new version)
+        if: steps.package.outputs.has_plugins == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # 用插件版本打 tag；从首个 .cindy 对应插件版本生成
+          for f in $(find dist -name '*.cindy'); do
+            dir=$(dirname "$f" | sed 's|dist/||')
+            ver="$(jq -r '.version' "${dir}/ghost.json")"
+            tag="${dir}-${ver}"
+            gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --generate-notes
+            gh release upload "$tag" "$f" --clobber
+            echo "Released ${tag} with $(basename "$f")"
+          done
