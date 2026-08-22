@@ -1,0 +1,8 @@
+# Claude Desktop Buddy — 插件源码仓库
+# 构建产物不提交（由 CI 生成）
+*.cindy
+
+# 运行时临时文件
+*.log
+.run/
+node_modules/

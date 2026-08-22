@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* 注意：不要用 :root{--x:var(--x,回退)} 自引用——CSS 变量自引用成循环会让值无效。
+     直接在使用处写 var(--宿主变量, 回退)，避免依赖注入失败导致元素不可见。 */
+  body { margin: 0; padding: 12px; color: var(--text-primary, #1a1a1a); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: transparent; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-secondary, #66686a); display: inline-block; }
+  .dot.on { background: #3fae58; }
+  .dot.off { background: #d9534f; }
+  .muted { color: var(--text-secondary, #66686a); font-size: 13px; }
+  button { background: #5a6cf0; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span id="dot" class="dot off"></span>
+    <span id="status" class="muted">未连接</span>
+    <span id="battery" class="muted" style="margin-left:auto"></span>
+  </div>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button id="pairBtn">配对</button>
+    <button id="unpairBtn">解除配对</button>
+  </div>
+  <script src="/settings.js"></script>
+</body>
+</html>

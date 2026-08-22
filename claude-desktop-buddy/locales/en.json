@@ -1,0 +1,24 @@
+{
+  "name": "Claude Desktop Buddy",
+  "description": "Project Cindy session status in real time to a Claude Desktop Buddy hardware desk pet (FoloToy AI Passport). The hardware screen shows aggregate session state, token usage, and pending-approval hints; the panel works on its own even without hardware.",
+  "whenToUse": "Use to show Cindy session status on a desktop hardware buddy device, view live aggregate state (total/running/waiting, token usage, pending approval), connect or disconnect the device, or check link state or recent device messages.",
+  "tools": {
+    "buddy_status": {
+      "description": "Query the current state of the Claude Desktop Buddy plugin: BLE link state, whether hardware is paired/connected, device name and battery (if any), and the last session-state snapshot sent to the device. Does not trigger a BLE scan or send; returns only locally cached state. When not connected, explains that no link is established and how to proceed."
+    },
+    "buddy_connect": {
+      "description": "Connect a Claude Desktop Buddy hardware device. Triggers a BLE scan and matches the hardware by its advertised Nordic UART (NUS) service — the most reliable identifier for a Claude Buddy device. The link is kept alive and session state is pushed automatically; returns the device name and link status on success, or an actionable error on failure. No parameters needed by default — it auto-finds the device (service matching covers the case where Windows cannot read the broadcast name).",
+      "parameters": {
+        "/properties/name_prefix": {
+          "description": "Optional device-name-prefix tightening condition; unset by default (match by NUS service only). Pass only when the user named a specific device and wants to limit to that name."
+        },
+        "/properties/mac": {
+          "description": "Optional hardware Bluetooth MAC address (e.g. 4C:11:AE:31:30:3A) tightening condition; unset by default (match by NUS service only). Pass only when the user supplied a MAC and wants to pin a specific device."
+        }
+      }
+    },
+    "buddy_disconnect": {
+      "description": "Disconnect the current Claude Desktop Buddy hardware device. Stops pushing state to the device; the panel still shows local session state. Returns success idempotently even if no hardware is connected."
+    }
+  }
+}

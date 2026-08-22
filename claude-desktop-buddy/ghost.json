@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 2,
+  "id": "claude-desktop-buddy",
+  "name": "Claude Desktop Buddy",
+  "description": "把 Cindy 的会话状态实时投射到 Claude Desktop Buddy 硬件桌面伙伴（FoloToy AI Passport）。硬件屏幕显示会话聚合状态、token 用量和等待审批提示；不插硬件时面板仍可独立显示状态。",
+  "whenToUse": "需要把 Cindy 会话状态显示在桌面硬件伙伴设备上、查看实时会话聚合状态（总/运行/等待数、token 用量、是否在等审批）、连接或断开 Claude Desktop Buddy 硬件、查看硬件连接状态或最近设备消息时找我。",
+  "version": "2.7.0",
+  "icon": "assets/icon.png",
+  "entry": "main.js",
+  "command": "claude-buddy",
+  "personal": true,
+  "slots": [
+    "tool",
+    "node",
+    "subscribe"
+  ],
+  "launch": "resident",
+  "subscribe": {
+    "topics": ["turn", "session"],
+    "hooks": ["will-user-message"]
+  },
+  "tools": [
+    {
+      "name": "buddy_status",
+      "description": "查询 Claude Desktop Buddy 插件的当前状态：BLE 连接状态、硬件是否已配对/已连接、硬件品牌名与电量（如有）、以及最近一次发送给硬件的会话状态快照。不触发 BLE 扫描或发送，仅返回本地已缓存的状态。硬件未连接时返回连接未建立及下一步指引。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "buddy_connect",
+      "description": "连接 Claude Desktop Buddy 硬件设备。触发一次 BLE 扫描，按所广播的 Nordic UART(NUS) service 精确匹配硬件并连接——这是对 Claude Buddy 硬件最可靠的识别方式。建立后的链路持续保持，会话状态会自动推送给硬件；成功返回硬件名称与连接状态，失败返回可排查的错误信息。默认无需传任何参数即可自动找到硬件（不支持 Windows 上无法读取广播名的情况，用 service 匹配兜底）。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name_prefix": {
+            "type": "string",
+            "description": "可选的设备名前缀收紧条件，默认不设（只按 NUS service 匹配）。仅当用户明确指定了设备名、希望只连接特定名字时才传。"
+          },
+          "mac": {
+            "type": "string",
+            "description": "可选的硬件蓝牙 MAC 地址（形如 4C:11:AE:31:30:3A）收紧条件。默认不设（只按 NUS service 匹配）。仅当用户提供了 MAC 地址、希望精确限定某台设备时才传。"
+          }
+        }
+      }
+    },
+    {
+      "name": "buddy_disconnect",
+      "description": "断开当前 Claude Desktop Buddy 硬件连接。断开后停止向硬件发送状态，面板仍显示本地会话状态。没有已连接的硬件时返回幂等成功。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "settingsHtml": "settings.html",
+  "settingsHeight": 380,
+  "node": {
+    "entry": "node/worker.cjs",
+    "protocol": "json-rpc-stdio",
+    "lifecycle": "on-demand",
+    "idleTimeoutSeconds": 3600
+  },
+  "locales": {
+    "zh-CN": "locales/zh-CN.json",
+    "en": "locales/en.json",
+    "ja": "locales/ja.json",
+    "ko": "locales/ko.json"
+  }
+}
