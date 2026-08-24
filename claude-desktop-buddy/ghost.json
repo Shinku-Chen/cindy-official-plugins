@@ -4,7 +4,7 @@
   "name": "Claude Desktop Buddy",
   "description": "把 Cindy 的会话状态实时投射到 Claude Desktop Buddy 硬件桌面伙伴（FoloToy AI Passport）。硬件屏幕显示会话聚合状态、token 用量和等待审批提示；不插硬件时面板仍可独立显示状态。",
   "whenToUse": "需要把 Cindy 会话状态显示在桌面硬件伙伴设备上、查看实时会话聚合状态（总/运行/等待数、token 用量、是否在等审批）、连接或断开 Claude Desktop Buddy 硬件、查看硬件连接状态或最近设备消息时找我。",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "icon": "assets/icon.png",
   "entry": "main.js",
   "command": "claude-buddy",
@@ -16,7 +16,7 @@
   ],
   "launch": "resident",
   "subscribe": {
-    "topics": ["turn", "session"],
+    "topics": ["turn", "session", "activity"],
     "hooks": ["will-user-message"]
   },
   "tools": [

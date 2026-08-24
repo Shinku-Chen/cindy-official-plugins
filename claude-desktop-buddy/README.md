@@ -21,6 +21,7 @@
 
 ```
 subscribe 旁听 Cindy 事件 (did-turn-*/did-approval-*/did-user-input-*/did-session-*)
+        │  topics: turn / session / activity（activity 含审批与用户输入边界）
         │  聚合状态
         ▼
 main.js ──► BroadcastChannel ──► panel.html（停靠面板）
