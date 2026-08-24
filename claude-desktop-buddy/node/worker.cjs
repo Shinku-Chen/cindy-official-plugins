@@ -232,10 +232,29 @@ function onDeviceData(ev) {
   }
 }
 
-// ---- 发送 JSON 行（串行 + 分片，经 RX writeValueWithoutResponse）----
+// ---- 发送 JSON 行（串行 + 分片，经 RX writeValueWithResponse）----
+// BLE ATT 单次 write 有 MTU 上限：macOS CoreBluetooth（经 SimpleBLE 的
+// writeRequest）对超过协商 MTU 的整包写入报 CBATTError Code=13
+// "value's length is invalid"（Windows 蓝牙栈自动处理长写入，无此问题）。
+// 协议本身是"换行分隔 UTF-8 JSON"，接收端按字节流累积、遇到 \n 才切一条
+// 完整 JSON——所以发送端只需把 payload 按 CHUNK_BYTES 切成多段串行写出，
+// 段间不插入任何字节，硬件收到的仍是完整字节流，在 \n 处解析，完全透明。
+const CHUNK_BYTES = 180; // 分片上限（字节），留足 ATT 头余量，避开 macOS MTU
+
 function enqueueTx(line) {
   state.txQueue.push(line);
   if (!state.txInFlight) flushTx();
+}
+
+function writeChunk(buf) {
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  // 关键：用 writeValueWithResponse（带响应写）而非 writeValueWithoutResponse（fire-and-forget）。
+  // 实测：writeWithoutResponse 在加密/握手阶段不可靠，硬件可能收不到（停在 WAITING FOR CLAUDE）；
+  // writeValueWithResponse 走 ATT write request，硬件真实接收并加密校验通过。
+  if (typeof state.rxChar.writeValueWithResponse === 'function') {
+    return state.rxChar.writeValueWithResponse(ab);
+  }
+  return state.rxChar.writeValueWithoutResponse(ab);
 }
 
 function flushTx() {
@@ -248,27 +267,30 @@ function flushTx() {
   state.txInFlight = true;
   const line = state.txQueue.shift();
   const payload = Buffer.from(line + '\n', 'utf8');
-  const ab = payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
-  const done = function (err) {
-    if (err) {
-      state.txInFlight = false;
-      log('tx failed:', err.message || err);
-      notifyEvent('tx_error', { message: err.message || String(err) });
-    } else {
-      state.lastTxStatus = line;
-      log('host->device:', line.length, 'bytes');
-      state.txInFlight = false;
-    }
-    flushTx();
-  };
-  // 关键：用 writeValueWithResponse（带响应写）而非 writeValueWithoutResponse（fire-and-forget）。
-  // 实测：writeWithoutResponse 在加密/握手阶段不可靠，硬件可能收不到（停在 WAITING FOR CLAUDE）；
-  // writeValueWithResponse 走 ATT write request，硬件真实接收并加密校验通过。
-  if (typeof state.rxChar.writeValueWithResponse === 'function') {
-    state.rxChar.writeValueWithResponse(ab).then(function () { done(null); }, function (err) { done(err); });
-  } else {
-    state.rxChar.writeValueWithoutResponse(ab).then(function () { done(null); }, function (err) { done(err); });
+  // 把整条 payload 切成 ≤CHUNK_BYTES 的字节段，串行写完整段才推进下一条。
+  const chunks = [];
+  for (let i = 0; i < payload.length; i += CHUNK_BYTES) {
+    chunks.push(payload.subarray(i, Math.min(i + CHUNK_BYTES, payload.length)));
   }
+  const writeNext = function (index) {
+    if (index >= chunks.length) {
+      state.lastTxStatus = line;
+      log('host->device:', line.length, 'bytes', 'in', chunks.length, 'chunk(s)');
+      state.txInFlight = false;
+      flushTx();
+      return;
+    }
+    writeChunk(chunks[index]).then(
+      function () { writeNext(index + 1); },
+      function (err) {
+        state.txInFlight = false;
+        log('tx failed:', err.message || err, '(chunk', (index + 1) + '/' + chunks.length + ')');
+        notifyEvent('tx_error', { message: err.message || String(err) });
+        flushTx();
+      },
+    );
+  };
+  writeNext(0);
 }
 
 // ---- 模拟设备（用于无硬件测试/回传）----
