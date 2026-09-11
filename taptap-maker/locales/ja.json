@@ -41,7 +41,7 @@
       "description": "現在のセッション作業ディレクトリにある TapTap Maker のローカル開発環境とプロジェクト設定を診断します。"
     },
     "maker_build": {
-      "description": "明示的に求められた場合だけ、同梱の公式 Runtime で現在のワークスペースを同期、提出、ビルドします。成功時は Cindy の右側ブラウザでプレビューを開き、user_facing_markdown をそのまま引用します。システムブラウザ、外部 CLI、直接 MCP、内部ビルドツールは使いません。",
+      "description": "明示的に求められた場合だけ、同梱の公式 Runtime で現在のワークスペースを同期、提出、ビルドします。成功時は Cindy の右側ブラウザでプレビューを開き、user_facing_markdown をそのまま引用します。システムブラウザ、外部 CLI、直接 MCP、内部ビルドツールは使いません。 ビルドのコミット前に main がリモートより遅れているだけの場合は自動 fast-forward し、履歴の分岐やローカル変更の上書きが必要な場合は停止します。",
       "parameters": {
         "/properties/entry": {
           "description": "任意。scriptsPath からの相対パスで指定する一人用 Lua エントリです。"
@@ -70,10 +70,10 @@
       }
     },
     "maker_list_tools": {
-      "description": "同梱 Runtime に固定収録された Maker ツール一覧と schema スナップショットを表示します。現在のワークスペースでの利用可否をリアルタイム判定するものではなく、実行はアカウント権限、プロジェクト状態、リモートサービスに依存します。maker_call_tool の前に呼び出し、Shell、CLI、npx、直接 MCP で迂回しません。"
+      "description": "同梱 Runtime に固定収録された Maker ツール一覧と schema スナップショットを表示します。現在のワークスペースでの利用可否をリアルタイム判定するものではなく、制限付きアカウントでは動的一覧の代わりにアクセス制限メッセージを返す場合があります。実行はアカウント権限、プロジェクト状態、リモートサービスに依存します。maker_call_tool の前に呼び出し、Shell、CLI、npx、直接 MCP で迂回しません。"
     },
     "maker_call_tool": {
-      "description": "maker_list_tools が直前に返した公式 Maker 動的ツールを現在のワークスペースで呼び出し、Shell、CLI、npx、直接 MCP で迂回しません。.project/project.json がない場合はビルドが提出と push を行うと説明し、確認後だけ maker_build と再試行を行います。missing_taptap_identity は、Runtime が安全に回復可能な結果（execution_state が未指定または明示的に not_executed）を返した場合のみ、プラグインが初期化して一度再試行します。executed または unknown は再試行しません。「MCP error -32600: INSUFFICIENT_BALANCE」だけをクレジット不足と判断し、確認後に Art を案内します。",
+      "description": "maker_list_tools が直前に返した公式 Maker 動的ツールを現在のワークスペースで呼び出し、Shell、CLI、npx、直接 MCP で迂回しません。.project/project.json がない場合はビルドが提出と push を行うと説明し、確認後だけ maker_build と再試行を行います。missing_taptap_identity は、Runtime が安全に回復可能な結果（execution_state が未指定または明示的に not_executed）を返した場合のみ、プラグインが初期化して一度再試行します。executed または unknown は再試行しません。「MCP error -32600: INSUFFICIENT_BALANCE」だけをクレジット不足と判断し、確認後に Art を案内します。 Maker の画像・動画・音声スイッチは初期設定で有効です。無効時は対象リクエストを送信せず、他のツールを使うよう案内します。画像は単一・一括生成と編集、動画は新規生成のみ（照会は可能）、音声は音楽・効果音・台詞・声の試聴と確定を含みます。",
       "parameters": {
         "/properties/name": {
           "description": "直近の maker_list_tools が返した動的ツール名です。"

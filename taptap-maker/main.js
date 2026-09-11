@@ -126,6 +126,15 @@ async function listMakerTools(workdir) {
     params: { target_dir: workdir },
     timeoutMs: 60000,
   });
+  var access = isObject(result) && isObject(result._meta) ? result._meta.maker_access : null;
+  if (isObject(access) && access.code === 'BLACKLISTED') {
+    return makerErrorResult(
+      typeof access.message === 'string' && access.message
+        ? redactSensitiveText(access.message, true)
+        : '当前 Maker 账号已被限制，请检查账号权限。',
+      { code: 'BLACKLISTED', execution_state: 'not_executed', automatic_retry: false },
+    );
+  }
   var tools = isObject(result) && Array.isArray(result.tools) ? result.tools : [];
   return tools.filter(function visible(tool) {
     return isObject(tool) && typeof tool.name === 'string' && !FIXED_MAKER_TOOLS[tool.name];
@@ -133,6 +142,39 @@ async function listMakerTools(workdir) {
 }
 
 async function callMakerTool(name, args, longRunning) {
+  var preferenceKey;
+  var mediaLabel;
+  if (name === 'generate_image' || name === 'batch_generate_images' || name === 'edit_image') {
+    preferenceKey = 'makerImageEnabled';
+    mediaLabel = '生图';
+  } else if (name === 'create_video_task') {
+    preferenceKey = 'makerVideoEnabled';
+    mediaLabel = '生视频';
+  } else if (['text_to_music', 'text_to_sound_effect', 'batch_sound_effects', 'text_to_dialogue',
+    'audition_voices_for_character', 'confirm_character_voice'].includes(name)) {
+    preferenceKey = 'makerAudioEnabled';
+    mediaLabel = '生音频';
+  }
+  if (preferenceKey) {
+    var preferences;
+    try {
+      var response = await fetch('/kv');
+      if (!response.ok) throw new Error();
+      preferences = await response.json();
+      if (!isObject(preferences)
+        || (Object.prototype.hasOwnProperty.call(preferences, preferenceKey)
+          && typeof preferences[preferenceKey] !== 'boolean')) throw new Error();
+    } catch (_error) {
+      var settingsError = new Error('Maker ' + mediaLabel + '设置读取失败，本次未发送请求，请重新打开插件设置检查');
+      settingsError.execution_state = 'not_executed';
+      throw settingsError;
+    }
+    if (preferences[preferenceKey] === false) {
+      var disabledError = new Error('maker ' + mediaLabel + '被禁用，请使用其他' + mediaLabel + '工具');
+      disabledError.execution_state = 'not_executed';
+      throw disabledError;
+    }
+  }
   var progressToken = longRunning ? 'cindy-maker-' + nextProgressToken++ : null;
   return nodeRequest({
     method: 'tools/call',
@@ -652,7 +694,8 @@ async function handleTool(message) {
   }
   if (message.tool === 'maker_list_tools') {
     var listContext = requireLocalContext(message);
-    return { tools: await listMakerTools(listContext.workdir) };
+    var listedTools = await listMakerTools(listContext.workdir);
+    return Array.isArray(listedTools) ? { tools: listedTools } : listedTools;
   }
   if (message.tool === 'maker_call_tool') {
     var callContext = requireLocalContext(message);
@@ -666,8 +709,11 @@ async function handleTool(message) {
       throw new Error('固定 Maker 工具必须使用 maker_status 或 maker_build');
     }
     var available = await listMakerTools(callContext.workdir);
+    if (!Array.isArray(available)) return available;
     if (!available.some(function sameTool(tool) { return tool.name === args.name; })) {
-      throw new Error('Maker 动态工具不存在或当前不可用：' + args.name);
+      return makerErrorResult('Maker 动态工具不存在或当前不可用：' + args.name, {
+        execution_state: 'not_executed', automatic_retry: false,
+      });
     }
     var toolArgs = Object.assign({}, args.args || {}, { target_dir: callContext.workdir });
     return callMakerToolWithIdentityRecovery(
@@ -711,6 +757,14 @@ async function sendToolResult(message) {
       callId: message.callId,
       ok: false,
       message: redactSensitiveText(errorMessage(error), true).slice(0, 2000),
+      ...(error && error.execution_state ? { execution_state: error.execution_state } : {}),
+      ...(error && error.execution_state ? {
+        structuredContent: {
+          success: false,
+          message: redactSensitiveText(errorMessage(error), true).slice(0, 2000),
+          execution_state: error.execution_state,
+        },
+      } : {}),
     });
   }
 }

@@ -4,6 +4,15 @@
   var CHANNEL = 'taptap-maker-settings';
   var MESSAGES = {
     en: {
+      imageEnabled: 'Allow Maker image generation',
+      imageHint: 'On by default. Includes single images, batches and edits; may consume Maker credits. Turning off blocks future requests, not tasks already submitted.',
+      videoEnabled: 'Allow Maker video generation',
+      videoHint: 'On by default. Turning off blocks new video generation, but still allows querying submitted tasks.',
+      audioEnabled: 'Allow Maker audio generation',
+      audioHint: 'On by default. Includes music, sound effects, dialogue, voice previews and confirmation; may consume credits or voice slots. Submitted tasks are not canceled.',
+      mediaSaving: 'Saving…', mediaSaved: 'Saved',
+      mediaLoadFailed: 'Could not load the media settings. Reopen this page to retry.',
+      mediaSaveFailed: 'Could not confirm the save. Reopen this page to check the settings.',
       accountTitle: 'TapTap Maker account', officialRuntime: 'Official Runtime',
       checkingStatus: 'Checking sign-in status...', browserAuthTitle: 'Option 1: Browser authorization',
       openBrowserAuth: 'Authorize in browser',
@@ -44,6 +53,15 @@
       responseTimeout: 'The TapTap Maker plugin timed out. Try again.',
     },
     'zh-CN': {
+      imageEnabled: '允许 Maker 生图',
+      imageHint: '默认开启，包含单张生图、批量生图和改图，可能消耗 Maker 积分。关闭后拦截后续请求，不影响已提交任务。',
+      videoEnabled: '允许 Maker 生视频',
+      videoHint: '默认开启。关闭后拦截新的视频生成请求，仍可查询已提交任务。',
+      audioEnabled: '允许 Maker 生音频',
+      audioHint: '默认开启，包含音乐、音效、配音、音色试听及确认，可能消耗积分或音色名额；关闭不会取消已提交任务。',
+      mediaSaving: '正在保存…', mediaSaved: '已保存',
+      mediaLoadFailed: '素材设置加载失败，请重新打开页面重试',
+      mediaSaveFailed: '未能确认保存结果，请重新打开页面核对设置',
       accountTitle: 'TapTap Maker 账号', officialRuntime: '官方 Runtime',
       checkingStatus: '正在检查登录状态…', browserAuthTitle: '方式一：浏览器授权',
       openBrowserAuth: '打开浏览器授权', browserAuthHint: '由官方 CLI 打开 TapTap 页面，授权完成后自动连接。',
@@ -77,6 +95,15 @@
       operationFailed: 'TapTap Maker 设置操作失败', responseTimeout: 'TapTap Maker 插件响应超时，请稍后重试',
     },
     ja: {
+      imageEnabled: 'Maker の画像生成を許可',
+      imageHint: '初期設定は有効です。単一・一括生成と画像編集を含み、Maker クレジットを消費する場合があります。無効化は今後のリクエストに適用され、送信済みのタスクには影響しません。',
+      videoEnabled: 'Maker の動画生成を許可',
+      videoHint: '初期設定は有効です。無効化すると新しい動画生成は停止しますが、送信済みタスクの照会は可能です。',
+      audioEnabled: 'Maker の音声生成を許可',
+      audioHint: '初期設定は有効です。音楽・効果音・台詞・声の試聴と確定を含み、クレジットや音声枠を消費する場合があります。送信済みタスクは取り消しません。',
+      mediaSaving: '保存中…', mediaSaved: '保存しました',
+      mediaLoadFailed: '素材設定を読み込めませんでした。ページを開き直してください。',
+      mediaSaveFailed: '保存結果を確認できませんでした。ページを開き直して設定を確認してください。',
       accountTitle: 'TapTap Maker アカウント', officialRuntime: '公式 Runtime',
       checkingStatus: 'ログイン状態を確認しています…', browserAuthTitle: '方法 1：ブラウザ認証',
       openBrowserAuth: 'ブラウザで認証', browserAuthHint: '公式 CLI が TapTap を開き、認証完了後に自動接続します。',
@@ -110,6 +137,15 @@
       operationFailed: 'TapTap Maker の設定操作に失敗しました。', responseTimeout: 'TapTap Maker プラグインがタイムアウトしました。再試行してください。',
     },
     ko: {
+      imageEnabled: 'Maker 이미지 생성 허용',
+      imageHint: '기본적으로 켜져 있습니다. 단일·일괄 생성 및 편집을 포함하며 Maker 크레딧이 사용될 수 있습니다. 끄면 이후 요청만 차단되며 이미 제출한 작업에는 영향을 주지 않습니다.',
+      videoEnabled: 'Maker 동영상 생성 허용',
+      videoHint: '기본적으로 켜져 있습니다. 끄면 새 동영상 생성은 차단되지만 제출한 작업은 조회할 수 있습니다.',
+      audioEnabled: 'Maker 오디오 생성 허용',
+      audioHint: '기본적으로 켜져 있습니다. 음악, 효과음, 대사, 음성 미리듣기 및 확정을 포함하며 크레딧이나 음성 슬롯이 사용될 수 있습니다. 제출한 작업은 취소되지 않습니다.',
+      mediaSaving: '저장 중…', mediaSaved: '저장됨',
+      mediaLoadFailed: '미디어 설정을 불러오지 못했습니다. 페이지를 다시 열어 주세요.',
+      mediaSaveFailed: '저장 결과를 확인하지 못했습니다. 페이지를 다시 열어 설정을 확인하세요.',
       accountTitle: 'TapTap Maker 계정', officialRuntime: '공식 Runtime',
       checkingStatus: '로그인 상태를 확인하는 중...', browserAuthTitle: '방법 1: 브라우저 인증',
       openBrowserAuth: '브라우저에서 인증', browserAuthHint: '공식 CLI가 TapTap을 열고 인증이 끝나면 자동으로 연결합니다.',
@@ -165,6 +201,63 @@
   var projects = [];
   var selectedProjectIds = new Set();
   var nextRequestId = 1;
+  var mediaControls = [
+    { key: 'makerImageEnabled', toggle: document.getElementById('maker-image-enabled') },
+    { key: 'makerVideoEnabled', toggle: document.getElementById('maker-video-enabled') },
+    { key: 'makerAudioEnabled', toggle: document.getElementById('maker-audio-enabled') },
+  ];
+  var mediaMessage = document.getElementById('media-message');
+
+  function disableMediaControls(disabled) {
+    mediaControls.forEach(function disable(control) { control.toggle.disabled = disabled; });
+  }
+
+  async function readMediaPreferences() {
+    var response = await fetch('/kv');
+    if (!response.ok) throw new Error();
+    var preferences = await response.json();
+    if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)
+      || mediaControls.some(function invalid(control) {
+        return Object.prototype.hasOwnProperty.call(preferences, control.key)
+          && typeof preferences[control.key] !== 'boolean';
+      })) throw new Error();
+    return preferences;
+  }
+
+  async function loadMediaPreferences() {
+    try {
+      var preferences = await readMediaPreferences();
+      mediaControls.forEach(function apply(control) {
+        control.saved = preferences[control.key] !== false;
+        control.toggle.checked = control.saved;
+      });
+      disableMediaControls(false);
+    } catch (_error) {
+      disableMediaControls(true);
+      mediaMessage.textContent = t('mediaLoadFailed');
+    }
+  }
+
+  mediaControls.forEach(function wire(control) {
+    control.toggle.addEventListener('change', async function saveMediaPreference() {
+      if (control.toggle.disabled) return;
+      var enabled = control.toggle.checked;
+      disableMediaControls(true);
+      mediaMessage.textContent = t('mediaSaving');
+      try {
+        var preferences = await readMediaPreferences();
+        preferences[control.key] = enabled;
+        var response = await fetch('/kv', { method: 'PUT', body: JSON.stringify(preferences) });
+        if (!response.ok) throw new Error();
+        control.saved = enabled;
+        mediaMessage.textContent = t('mediaSaved');
+        disableMediaControls(false);
+      } catch (_error) {
+        control.toggle.checked = control.saved;
+        mediaMessage.textContent = t('mediaSaveFailed');
+      }
+    });
+  });
 
   function normalizeLocale(locale) {
     return Object.prototype.hasOwnProperty.call(MESSAGES, locale) ? locale : 'en';
@@ -554,6 +647,6 @@
   void loadHostLocale().then(function start() {
     accountState.textContent = t('checkingStatus');
     updateControls();
-    return refreshAccount();
+    return Promise.all([loadMediaPreferences(), refreshAccount()]);
   });
 }());

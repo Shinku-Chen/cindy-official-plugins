@@ -11,10 +11,12 @@
 3. 未连接账号时调用 `maker_login`，等待浏览器授权完成后继续原任务，不要求用户重新发起。
 4. 初始化已有项目时先用 `maker_apps` 获取 `app_id`，再调用 `maker_init`。只有用户明确要求新建项目时才传 `create=true` 和 `name`。
 5. 构建、运行或预览用 `maker_build`。成功结果含 `user_facing_markdown` 时原样引用，不放进代码块；右侧预览由插件打开。
-6. 使用素材、广告、调试或其它 Maker 能力前，先调用 `ghost_call({ ghost_id: "taptap-maker", tool: "maker_list_tools", args: {} })` 获取随包 Runtime 固定发布的工具目录与参数 schema 快照；它不表示当前工作区实时可用，实际可用性以调用结果为准。再通过 `ghost_call({ ghost_id: "taptap-maker", tool: "maker_call_tool", args: { name: "<刚返回的工具名>", args: { ... } } })` 调用，不凭记忆猜工具名。
+6. 使用素材、广告、调试或其它 Maker 能力前，先调用 `ghost_call({ ghost_id: "taptap-maker", tool: "maker_list_tools", args: {} })` 获取随包 Runtime 固定发布的工具目录与参数 schema 快照；它不表示当前工作区实时可用。账号受限时可能直接返回账号限制提示而非动态目录，实际可用性以调用结果为准。再通过 `ghost_call({ ghost_id: "taptap-maker", tool: "maker_call_tool", args: { name: "<刚返回的工具名>", args: { ... } } })` 调用，不凭记忆猜工具名。
 
 ## 约束与恢复
 
+- 构建提交前，本地 main 仅落后 Maker 远端时，Runtime 自动执行 fast-forward；历史分叉、非 main 分支、同步状态无法确认或会覆盖本地修改时停止，不提交或推送。
+- 插件设置中的 Maker 生图、生视频、生音频开关默认开启；关闭时不发送对应请求，仅返回“maker 生图/生视频/生音频被禁用，请使用其他生图/生视频/生音频工具”（按实际类别提示）。生图包含单张、批量和改图；生视频仅拦截创建任务，不影响查询；生音频包含音乐、音效、配音、音色试听和确认。开关不取消已提交任务。
 - 所有项目操作只针对当前 Cindy 会话的本地工作区。目标项目在别处时，请用户先在 Cindy 中打开该目录，不要绕过插件。
 - 当前会话处于计划或只读模式时，只做广告指南、状态、诊断和工具列表等只读检查；不要尝试初始化、构建或调用动态工具。
 - 如果缺少 `.project/project.json`，且用户已经要求构建、运行或预览，调用 `maker_build` 后重试；否则先说明构建会提交并推送项目，获得确认后再构建。

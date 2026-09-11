@@ -58,7 +58,7 @@ class FakeBroadcastChannel {
   }
 }
 
-function createMainHarness(nodeResponder) {
+function createMainHarness(nodeResponder, readPreferences = async () => ({ ok: true, json: async () => ({}) })) {
   FakeBroadcastChannel.instances.length = 0;
   const nodeRequests = [];
   const previewRequests = [];
@@ -100,7 +100,7 @@ function createMainHarness(nodeResponder) {
       BroadcastChannel: FakeBroadcastChannel,
       URL,
       cindy,
-      fetch: async () => ({ ok: true }),
+      fetch: readPreferences,
       setTimeout: () => 1,
     }),
   );
@@ -125,6 +125,340 @@ function createMainHarness(nodeResponder) {
     },
   };
 }
+
+const imageToolNames = ['generate_image', 'batch_generate_images', 'edit_image'];
+const videoToolNames = ['create_video_task'];
+const audioToolNames = ['text_to_music', 'text_to_sound_effect', 'batch_sound_effects',
+  'text_to_dialogue', 'audition_voices_for_character', 'confirm_character_voice'];
+const mediaGroups = [
+  { key: 'makerImageEnabled', label: '生图', names: imageToolNames },
+  { key: 'makerVideoEnabled', label: '生视频', names: videoToolNames },
+  { key: 'makerAudioEnabled', label: '生音频', names: audioToolNames },
+];
+const imageSessionContext = { workdir_is_local: true, workdir: '/tmp/maker-image-test' };
+
+function imageNodeResponder(request) {
+  return {
+    ok: true,
+    result: request.method === 'cindy/tools-list'
+      ? { tools: [...imageToolNames, ...videoToolNames, ...audioToolNames, 'query_video_task']
+        .map((name) => ({ name })) }
+      : { content: [{ type: 'text', text: 'unchanged runtime result' }] },
+  };
+}
+
+function callImage(harness, name = 'generate_image') {
+  return harness.call('maker_call_tool', {
+    name, args: { prompt: 'example image' }, session_context: imageSessionContext,
+  });
+}
+
+test('生图默认开启或显式开启时保持原请求和结果', async () => {
+  for (const preferences of [{}, { makerImageEnabled: true }]) {
+    for (const name of imageToolNames) {
+      const harness = createMainHarness(imageNodeResponder, async () => ({
+        ok: true, json: async () => preferences,
+      }));
+      const result = await callImage(harness, name);
+      assert.equal(result.ok, true);
+      assert.equal(result.result.content[0].text, 'unchanged runtime result');
+      const calls = harness.nodeRequests.filter((request) => request.method === 'tools/call');
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].params.name, name);
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0].params.arguments)), {
+        prompt: 'example image', target_dir: imageSessionContext.workdir,
+      });
+    }
+  }
+});
+
+test('关闭后单张、批量和改图均不发送，精确返回简短提示且不修改工具列表', async () => {
+  for (const name of imageToolNames) {
+    const harness = createMainHarness(imageNodeResponder, async () => ({
+      ok: true, json: async () => ({ makerImageEnabled: false }),
+    }));
+    const listed = await harness.call('maker_list_tools', { session_context: imageSessionContext });
+    assert.ok(listed.result.tools.some((tool) => tool.name === name));
+    const result = await callImage(harness, name);
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'maker 生图被禁用，请使用其他生图工具');
+    assert.equal(result.execution_state, 'not_executed');
+    assert.equal(result.structuredContent.execution_state, 'not_executed');
+    assert.equal(harness.nodeRequests.filter((request) => request.method === 'tools/call').length, 0);
+  }
+});
+
+test('同一插件实例关闭和重新开启立即影响后续生图', async () => {
+  const preferences = {};
+  const harness = createMainHarness(imageNodeResponder, async () => ({
+    ok: true, json: async () => preferences,
+  }));
+  assert.equal((await callImage(harness)).ok, true);
+  preferences.makerImageEnabled = false;
+  assert.equal((await callImage(harness)).ok, false);
+  assert.equal((await callImage(harness)).ok, false);
+  preferences.makerImageEnabled = true;
+  assert.equal((await callImage(harness)).ok, true);
+  assert.equal(harness.nodeRequests.filter((request) => request.method === 'tools/call').length, 2);
+});
+
+test('读取失败和损坏的生图设置不放行，非生图调用不读取设置', async () => {
+  for (const readPreferences of [
+    async () => { throw new Error('read failed'); },
+    async () => ({ ok: false }),
+    async () => ({ ok: true, json: async () => { throw new Error('invalid JSON'); } }),
+    ...[null, [], { makerImageEnabled: 'false' }, { makerImageEnabled: null }].map(
+      (value) => async () => ({ ok: true, json: async () => value }),
+    ),
+  ]) {
+    let reads = 0;
+    const harness = createMainHarness(imageNodeResponder, async () => {
+      reads += 1;
+      return readPreferences();
+    });
+    const result = await callImage(harness);
+    assert.equal(result.ok, false);
+    assert.match(result.message, /设置读取失败.*未发送/);
+    assert.equal(result.execution_state, 'not_executed');
+    assert.equal(result.structuredContent.execution_state, 'not_executed');
+    assert.equal(harness.nodeRequests.filter((request) => request.method === 'tools/call').length, 0);
+    assert.equal((await callImage(harness, 'query_video_task')).ok, true);
+    assert.equal((await harness.call('maker_status', { session_context: imageSessionContext })).ok, true);
+    assert.equal((await harness.call('maker_build', { session_context: imageSessionContext })).ok, true);
+    assert.equal(reads, 1);
+  }
+});
+
+test('身份恢复期间关闭开关会阻止再次发送生图', async () => {
+  let enabled = true;
+  const harness = createMainHarness(async (request) => {
+    if (request.method === 'cindy/tools-list') return imageNodeResponder(request);
+    if (request.params.name === 'generate_test_qrcode') {
+      enabled = false;
+      return { ok: true, result: { content: [{ type: 'text', text: 'created' }] } };
+    }
+    return {
+      ok: true,
+      result: {
+        isError: true,
+        structuredContent: { status: 'missing_taptap_identity', execution_state: 'not_executed' },
+        content: [{ type: 'text', text: 'missing_taptap_identity: call generate_test_qrcode' }],
+      },
+    };
+  }, async () => ({ ok: true, json: async () => ({ makerImageEnabled: enabled }) }));
+  const result = await callImage(harness);
+  assert.equal(result.ok, false);
+  assert.equal(result.message, 'maker 生图被禁用，请使用其他生图工具');
+  assert.deepEqual(harness.nodeRequests.filter((request) => request.method === 'tools/call')
+    .map((request) => request.params.name), ['generate_image', 'generate_test_qrcode']);
+});
+
+function imageSettingsHarness(readPreferences, writePreferences = async () => ({ ok: true })) {
+  const elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, {
+      disabled: ['maker-image-enabled', 'maker-video-enabled', 'maker-audio-enabled'].includes(id),
+      checked: false, value: '', textContent: '',
+      listeners: {},
+      addEventListener(event, listener) { this.listeners[event] = listener; },
+      querySelectorAll() { return []; },
+      replaceChildren() {}, append() {}, setAttribute() {},
+    });
+    return elements.get(id);
+  }
+  const context = createContext({
+    document: {
+      getElementById: element, documentElement: {}, querySelectorAll: () => [],
+      createElement: () => element('temporary'),
+    },
+    BroadcastChannel: class { addEventListener() {} removeEventListener() {} postMessage() {} },
+    AbortController,
+    setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    async fetch(url, options) {
+      if (url === '/app-context') return { ok: true, json: async () => ({ context: { locale: 'zh-CN' } }) };
+      if (url === '/kv') return options?.method === 'PUT'
+        ? writePreferences(JSON.parse(options.body)) : readPreferences();
+      if (url === '/wake') return { ok: true };
+      throw new Error('Unexpected URL: ' + url);
+    },
+  });
+  new Script(settingsSource).runInContext(context);
+  return {
+    toggle: element('maker-image-enabled'), video: element('maker-video-enabled'),
+    audio: element('maker-audio-enabled'), message: element('media-message'),
+  };
+}
+
+test('各类默认开启且独立拦截；视频查询始终保留', async () => {
+  for (const group of mediaGroups) {
+    const preferences = {};
+    const harness = createMainHarness(imageNodeResponder, async () => ({
+      ok: true, json: async () => preferences,
+    }));
+    for (const name of group.names) assert.equal((await callImage(harness, name)).ok, true);
+    preferences[group.key] = false;
+    const before = harness.nodeRequests.filter((request) => request.method === 'tools/call').length;
+    for (const name of group.names) {
+      const result = await callImage(harness, name);
+      assert.equal(result.ok, false);
+      assert.equal(result.message, 'maker ' + group.label + '被禁用，请使用其他' + group.label + '工具');
+      assert.equal(result.structuredContent.execution_state, 'not_executed');
+    }
+    assert.equal(harness.nodeRequests.filter((request) => request.method === 'tools/call').length, before);
+    for (const other of mediaGroups.filter((other) => other !== group)) {
+      assert.equal((await callImage(harness, other.names[0])).ok, true);
+    }
+    assert.equal((await callImage(harness, 'query_video_task')).ok, true);
+    preferences[group.key] = true;
+    for (const name of group.names) assert.equal((await callImage(harness, name)).ok, true);
+  }
+});
+
+test('视频和音频设置异常不发送请求，且不影响其它类别', async () => {
+  for (const group of mediaGroups.slice(1)) {
+    for (const preferences of [null, { [group.key]: 'false' }]) {
+      const harness = createMainHarness(imageNodeResponder, async () => ({
+        ok: true, json: async () => preferences,
+      }));
+      for (const name of group.names) {
+        const result = await callImage(harness, name);
+        assert.equal(result.ok, false);
+        assert.match(result.message, /设置读取失败.*未发送/);
+      }
+      assert.equal(harness.nodeRequests.filter((request) => request.method === 'tools/call').length, 0);
+      assert.equal((await callImage(harness, 'query_video_task')).ok, true);
+      if (preferences) assert.equal((await callImage(harness)).ok, true);
+    }
+  }
+});
+
+test('身份恢复期间关闭视频或音频，重试仍会被拦截', async () => {
+  for (const group of mediaGroups.slice(1)) {
+    let enabled = true;
+    const harness = createMainHarness(async (request) => {
+      if (request.method === 'cindy/tools-list') return imageNodeResponder(request);
+      if (request.params.name === 'generate_test_qrcode') {
+        enabled = false;
+        return { ok: true, result: { content: [{ type: 'text', text: 'created' }] } };
+      }
+      return {
+        ok: true,
+        result: {
+          isError: true,
+          structuredContent: { status: 'missing_taptap_identity', execution_state: 'not_executed' },
+          content: [{ type: 'text', text: 'missing_taptap_identity: call generate_test_qrcode' }],
+        },
+      };
+    }, async () => ({ ok: true, json: async () => ({ [group.key]: enabled }) }));
+    const result = await callImage(harness, group.names[0]);
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'maker ' + group.label + '被禁用，请使用其他' + group.label + '工具');
+    assert.deepEqual(harness.nodeRequests.filter((request) => request.method === 'tools/call')
+      .map((request) => request.params.name), [group.names[0], 'generate_test_qrcode']);
+  }
+});
+
+test('保留原生图设置，新开关默认开启；保存互斥且只更新被点击的类别', async () => {
+  let preferences = { makerImageEnabled: false, unrelated: 'preserve' };
+  let resolveWrite;
+  let writes = 0;
+  const read = async () => ({ ok: true, json: async () => ({ ...preferences }) });
+  const harness = imageSettingsHarness(read, async (next) => {
+    writes += 1;
+    if (writes === 1) await new Promise((resolve) => { resolveWrite = resolve; });
+    preferences = next;
+    return { ok: true };
+  });
+  await new Promise(setImmediate);
+  assert.equal(harness.toggle.checked, false);
+  assert.equal(harness.video.checked, true);
+  assert.equal(harness.audio.checked, true);
+  harness.video.checked = false;
+  const pendingSave = harness.video.listeners.change();
+  await new Promise(setImmediate);
+  for (const control of [harness.toggle, harness.video, harness.audio]) assert.equal(control.disabled, true);
+  await harness.audio.listeners.change();
+  assert.equal(writes, 1);
+  resolveWrite();
+  await pendingSave;
+  assert.deepEqual(preferences, { makerImageEnabled: false, makerVideoEnabled: false, unrelated: 'preserve' });
+  harness.audio.checked = false;
+  await harness.audio.listeners.change();
+  assert.equal(preferences.makerAudioEnabled, false);
+  assert.equal(preferences.makerVideoEnabled, false);
+  const reopened = imageSettingsHarness(read);
+  await new Promise(setImmediate);
+  for (const control of [reopened.toggle, reopened.video, reopened.audio]) {
+    assert.equal(control.checked, false);
+    assert.equal(control.disabled, false);
+  }
+});
+
+test('视频音频保存失败恢复原显示并保持三个开关禁用，提示重新核对', async () => {
+  for (const name of ['video', 'audio']) {
+    const harness = imageSettingsHarness(
+      async () => ({ ok: true, json: async () => ({}) }), async () => ({ ok: false }),
+    );
+    await new Promise(setImmediate);
+    harness[name].checked = false;
+    await harness[name].listeners.change();
+    assert.equal(harness[name].checked, true);
+    for (const control of [harness.toggle, harness.video, harness.audio]) assert.equal(control.disabled, true);
+    assert.match(harness.message.textContent, /未能确认保存结果/);
+  }
+});
+
+test('设置加载期间禁用，默认开启；点击保存保留其它偏好并可重新加载', async () => {
+  let resolveRead;
+  let preferences = { unrelated: 'preserve' };
+  let writes = 0;
+  const pending = new Promise((resolve) => { resolveRead = resolve; });
+  let firstRead = true;
+  const read = async () => {
+    if (firstRead) { firstRead = false; await pending; }
+    return { ok: true, json: async () => preferences };
+  };
+  const harness = imageSettingsHarness(read, async (value) => {
+    writes += 1;
+    preferences = value;
+    return { ok: true };
+  });
+  assert.equal(harness.toggle.disabled, true);
+  resolveRead();
+  await new Promise(setImmediate);
+  assert.equal(harness.toggle.checked, true);
+  assert.equal(harness.toggle.disabled, false);
+  harness.toggle.checked = false;
+  const saving = harness.toggle.listeners.change();
+  assert.equal(harness.toggle.disabled, true);
+  await harness.toggle.listeners.change();
+  await saving;
+  assert.equal(writes, 1);
+  assert.deepEqual(preferences, { unrelated: 'preserve', makerImageEnabled: false });
+  assert.equal(harness.message.textContent, '已保存');
+  const reopened = imageSettingsHarness(read);
+  await new Promise(setImmediate);
+  assert.equal(reopened.toggle.checked, false);
+  assert.equal(reopened.toggle.disabled, false);
+});
+
+test('设置加载失败保持禁用；保存失败不显示已保存并要求核对', async () => {
+  const failed = imageSettingsHarness(async () => ({ ok: false }));
+  await new Promise(setImmediate);
+  assert.equal(failed.toggle.disabled, true);
+  assert.match(failed.message.textContent, /加载失败/);
+  for (const write of [async () => ({ ok: false }), async () => { throw new Error('response lost'); }]) {
+    const harness = imageSettingsHarness(
+      async () => ({ ok: true, json: async () => ({ makerImageEnabled: false }) }), write,
+    );
+    await new Promise(setImmediate);
+    harness.toggle.checked = true;
+    await harness.toggle.listeners.change();
+    assert.equal(harness.toggle.checked, false);
+    assert.equal(harness.toggle.disabled, true);
+    assert.match(harness.message.textContent, /未能确认保存结果/);
+  }
+});
 
 function fakeChildHandle() {
   const events = new EventEmitter();
@@ -170,8 +504,8 @@ function loadAccountInternals() {
 test('manifest、手动安装策略和官方 Runtime 版本保持一致', () => {
   assert.equal(manifest.id, 'taptap-maker');
   assert.equal(manifest.author, 'Cindy');
-  assert.equal(manifest.version, '2.1.12');
-  assert.equal(manifest.minCindyVersion, '0.1.48');
+  assert.equal(manifest.version, '2.1.13');
+  assert.equal(manifest.minCindyVersion, '0.1.64');
   assert.match(
     manifest.tools.find((tool) => tool.name === 'maker_build').description,
     /user_facing_markdown/,
@@ -184,10 +518,13 @@ test('manifest、手动安装策略和官方 Runtime 版本保持一致', () => 
     manifest.tools.find((tool) => tool.name === 'maker_call_tool').description,
     /素材能力优先使用 Maker/,
   );
-  assert.deepEqual(
-    manifest.slots,
-    ['tool', 'card', 'node', 'session-context', 'pick', 'preview'],
-  );
+  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.slots, undefined);
+  assert.equal(manifest.sessionContext, true);
+  assert.equal(manifest.pick, true);
+  assert.deepEqual(manifest.card, { externalLinks: true });
+  assert.ok(manifest.node);
+  assert.ok(manifest.preview);
   assert.equal(manifest.skill, undefined);
   assert.equal(existsSync(new URL('skills/taptap-maker/SKILL.md', pluginRoot)), false);
   assert.deepEqual(manifest.manual, {
@@ -211,7 +548,7 @@ test('manifest、手动安装策略和官方 Runtime 版本保持一致', () => 
   assert.deepEqual(manifest.preview.hosts, ['maker.taptap.cn']);
   assert.deepEqual(provisioning.ghosts['taptap-maker'], { audience: { emails: [] } });
   assert.equal(vendorPackage.name, '@taptap/maker');
-  assert.equal(vendorPackage.version, '0.0.32');
+  assert.equal(vendorPackage.version, '0.0.33');
   assert.match(makerMcpSource, /TAPTAP_MAKER_DISTRIBUTION = 'cindy_plugin'/);
   assert.match(makerChildSource, /TAPTAP_MAKER_DISTRIBUTION = 'cindy_plugin'/);
   const statusTool = manifest.tools.find((tool) => tool.name === 'maker_status');
@@ -288,6 +625,161 @@ test('官方 Runtime 保留远端错误结果的 executed 执行态', () => {
     `${functionSource[0]}; normalized = normalizeRemoteProxyExecutionState('executed');`,
   ).runInContext(context);
   assert.equal(context.normalized, 'executed');
+});
+
+test('Runtime 错误包装保留执行三态并禁止自动重试', () => {
+  const names = ['normalizeRemoteProxyExecutionState', 'addRemoteProxyErrorExecutionState'];
+  const functions = names.map((name) => {
+    const match = vendorMakerSource.match(new RegExp('function ' + name + '\\([^]*?\n\\}'));
+    assert.ok(match, name);
+    return match[0];
+  });
+  const context = createContext({ isRecord2: (value) => value !== null && typeof value === 'object' });
+  new Script(functions.join('\n')).runInContext(context);
+  for (const state of ['not_executed', 'executed', 'unknown']) {
+    for (const input of [
+      { isError: true, structuredContent: { execution_state: state } },
+      { isError: true, execution_state: state },
+    ]) {
+      const output = context.addRemoteProxyErrorExecutionState(input);
+      assert.equal(output.structuredContent.execution_state, state);
+      assert.equal(output.structuredContent.automatic_retry, false);
+    }
+  }
+  const missing = context.addRemoteProxyErrorExecutionState({ isError: true });
+  assert.equal(missing.structuredContent.execution_state, 'unknown');
+  assert.equal(missing.structuredContent.automatic_retry, false);
+});
+
+test('Runtime 账号检查仅在明确 BLACKLISTED 时阻止访问', async () => {
+  const match = vendorMakerSource.match(/async function resolveMakerMcpAccessState\([^]*?\n\}/);
+  assert.ok(match);
+  for (const code of [undefined, 'BLACKLISTED', 'UNAUTHORIZED', 'NETWORK_ERROR']) {
+    const context = createContext({
+      MAKER_MCP_BLACKLISTED_MESSAGE: 'Maker account restricted',
+      requestTapAuthWithPat: async () => {
+        if (code) throw Object.assign(new Error('example failure'), { responseCode: code });
+      },
+    });
+    new Script(match[0]).runInContext(context);
+    const result = await context.resolveMakerMcpAccessState('prod');
+    assert.equal(result.blocked, code === 'BLACKLISTED');
+    if (result.blocked) assert.equal(result.message, 'Maker account restricted');
+  }
+});
+
+test('Runtime 不缓存黑名单访问状态，调用入口按请求重新检查', () => {
+  const source = vendorMakerSource;
+  assert.doesNotMatch(source, /const accessStatePromise = resolveMakerMcpAccessState/);
+  assert.ok((source.match(/await resolveMakerMcpAccessState\(getMakerEnvironment\(\)\)/g) || []).length >= 3);
+});
+
+test('Runtime user-skills pull 拒绝写入根路径中的符号链接', () => {
+  const match = vendorMakerSource.match(/function assertSafeUserSkillRoots\([^]*?\n\}/);
+  assert.ok(match);
+  const calls = [];
+  const context = createContext({
+    path26: { join: (...parts) => parts.join('/') },
+    pathExists: (value) => value.endsWith('/.codex'),
+    fs25: { lstatSync: () => ({ isSymbolicLink: () => true }) },
+  });
+  new Script(match[0]).runInContext(context);
+  assert.throws(() => context.assertSafeUserSkillRoots('/example-project'), /符号链接/);
+});
+
+test('Runtime BLACKLISTED 列表短路和调用拦截均将未执行状态传给插件最终结果', async () => {
+  function blockedBranch(schema, endMarker) {
+    const start = vendorMakerSource.indexOf('server.setRequestHandler(' + schema);
+    assert.ok(start >= 0);
+    const blockStart = vendorMakerSource.indexOf('    if (accessState.blocked)', start);
+    const blockEnd = vendorMakerSource.indexOf(endMarker, blockStart);
+    assert.ok(blockEnd > blockStart);
+    const context = createContext({
+      tools: [{ name: 'maker_status_lite' }],
+      accessState: { blocked: true, message: 'Maker account restricted' },
+    });
+    return new Script('(function () {' + vendorMakerSource.slice(blockStart, blockEnd) + '})()')
+      .runInContext(context);
+  }
+  const blockedList = blockedBranch('ListToolsRequestSchema', '    const contextPromise');
+  const blockedCall = blockedBranch('CallToolRequestSchema', '    const startedAt');
+  for (const name of ['create_video_task', 'confirm_character_voice']) {
+    for (const listBlocked of [true, false]) {
+      let restored = false;
+      const harness = createMainHarness(async (request) => {
+        if (restored) return imageNodeResponder(request);
+        if (request.method === 'cindy/tools-list') {
+          return listBlocked ? { ok: true, result: blockedList } : imageNodeResponder(request);
+        }
+        assert.equal(request.method, 'tools/call');
+        return { ok: true, result: blockedCall };
+      });
+      const result = await callImage(harness, name);
+      assert.equal(result.ok, true); // Host delivered a structured MCP error result.
+      assert.equal(result.result.isError, true);
+      assert.equal(result.result.structuredContent.execution_state, 'not_executed');
+      assert.notEqual(result.result.structuredContent.automatic_retry, true);
+      assert.equal(harness.nodeRequests.filter((req) => req.method === 'tools/call').length,
+        listBlocked ? 0 : 1);
+      assert.match(result.result.content[0].text, /restricted/);
+      if (listBlocked) {
+        assert.equal(result.result.structuredContent.code, 'BLACKLISTED');
+        const listed = await harness.call('maker_list_tools', { session_context: imageSessionContext });
+        assert.equal(listed.result.isError, true);
+        assert.equal(listed.result.structuredContent.execution_state, 'not_executed');
+        assert.match(listed.result.content[0].text, /restricted/);
+      }
+      restored = true;
+      const recovered = await callImage(harness, name);
+      assert.equal(recovered.ok, true);
+      assert.equal(recovered.result.isError, undefined);
+    }
+  }
+});
+
+test('Runtime 仅在落后远端时快进，冲突或不安全状态在提交前停止', async () => {
+  const match = vendorMakerSource.match(/async function pushMakerProject\([^]*?\n\}/);
+  assert.ok(match);
+  const failureMatch = vendorMakerSource.match(/function getBlockingRemoteSyncFailure\([^]*?\n\}/);
+  assert.ok(failureMatch);
+  for (const status of ['needs_pull', 'conflict', 'diverged', 'branch_not_allowed', 'remote_unavailable']) {
+    const calls = [];
+    const context = createContext({
+      path8: { resolve: (value) => value },
+      ensureGitAvailable() {},
+      resolveUsableMakerGitWorkspace: (cwd) => ({ projectRoot: cwd }),
+      loadProjectConfig: () => ({ project_id: 'example-project' }),
+      ensureAuthenticatedOrigin: async () => {},
+      inspectMakerRemoteSyncStatus: async () => ({
+        status: status === 'conflict' ? 'needs_pull' : status,
+        branch: 'main', remoteRef: 'origin/main', nextAction: 'Check remote state',
+      }),
+      runGit: async (args) => {
+        calls.push(Array.from(args));
+        if (status === 'conflict') throw new Error('would be overwritten');
+      },
+      toMakerGitFailure: (error, stage) => ({ stage, stderr: error.message }),
+      readAheadState: async () => ({}),
+      readGit: async () => { calls.push(['status']); return ''; },
+      currentBranch: async () => 'main',
+      readUnpushedCommitState: async () => ({ hasUnpushedCommits: false }),
+    });
+    new Script(match[0] + '\n' + failureMatch[0]).runInContext(context);
+    const result = await context.pushMakerProject({ cwd: '/example-project' });
+    assert.equal(result.committed, false);
+    assert.equal(result.pushed, false);
+    if (status === 'needs_pull') {
+      assert.deepEqual(calls, [['merge', '--ff-only', 'origin/main'], ['status']]);
+      assert.equal(result.failure, undefined);
+    } else if (status === 'conflict') {
+      assert.deepEqual(calls, [['merge', '--ff-only', 'origin/main']]);
+      assert.equal(result.failure.stage, 'pull');
+      assert.match(result.failure.nextAction, /覆盖本地修改/);
+    } else {
+      assert.deepEqual(calls, []);
+      assert.equal(result.failure.stage, 'remote_sync');
+    }
+  }
 });
 
 test('召回文案在四语言中限定 Maker 项目并排除泛 TapTap 和插件源码维护', () => {

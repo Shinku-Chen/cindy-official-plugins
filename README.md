@@ -383,10 +383,28 @@ plugin text and every tool description. Then follow
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) and install the exact packaged `.cindy` on
 a real device running an eligible stable production Cindy build.
 
-`taptap-maker/vendor/taptap-maker/` ships the official `@taptap/maker@0.0.32`
+`taptap-maker/vendor/taptap-maker/` ships the official `@taptap/maker@0.0.33`
 with the plugin. When upgrading, replace the published npm package content
-wholesale and bump the plugin version accordingly — do not edit the generated
-`dist/maker.js` by hand.
+wholesale and bump the plugin version accordingly. Preserve these reviewed Cindy
+compatibility patches until the official package includes equivalent fixes:
+
+- `normalizeRemoteProxyExecutionState` accepts `executed`, preserving confirmed
+  execution (original patch: `ff54f59`).
+- The BLACKLISTED `tools/call` rejection includes `structuredContent` with
+  `success: false`, its message, and `execution_state: "not_executed"`, so Cindy's
+  error sanitizer retains the execution state.
+- The BLACKLISTED `tools/list` response retains the restricted tool list and adds
+  `_meta.maker_access` with the original code and message. Cindy returns the account
+  restriction and `not_executed` before dispatch rather than a generic missing-tool error.
+- `user-skills pull` rejects existing symlinks in all project/client skill roots before any write.
+- `tools/list`, `resources/read`, and `tools/call` check account access per request
+  instead of using a startup-only `accessStatePromise`; PAT changes take effect
+  without waiting for the old Runtime process to expire. This adds an authentication
+  check to each of these requests; it does not change the upstream access policy.
+
+Apart from these patches and the retained `LICENSE`, vendor files must match the
+official npm package. Recheck the patch list and regression tests on every upgrade;
+do not add unrelated manual bundle edits.
 
 ## Community
 

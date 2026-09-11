@@ -41,7 +41,7 @@
       "description": "诊断当前会话工作目录的 TapTap Maker 本地开发环境与项目配置。"
     },
     "maker_build": {
-      "description": "通过插件随附的官方 Runtime 同步、提交并构建当前会话工作区。仅在用户明确要求构建、运行、预览、提交或推送时调用；成功后优先在当前会话右侧打开预览，并原样返回可点击的 user_facing_markdown。不调用系统浏览器，也不通过外部 CLI、直接 MCP 或内部构建工具绕行。",
+      "description": "通过插件随附的官方 Runtime 同步、提交并构建当前会话工作区。仅在用户明确要求构建、运行、预览、提交或推送时调用；成功后优先在当前会话右侧打开预览，并原样返回可点击的 user_facing_markdown。不调用系统浏览器，也不通过外部 CLI、直接 MCP 或内部构建工具绕行。 构建提交前，若本地 main 仅落后远端，Runtime 会自动 fast-forward；分叉或会覆盖本地修改时停止。",
       "parameters": {
         "/properties/entry": {
           "description": "可选，单人游戏 Lua 入口文件，相对 scriptsPath。"
@@ -70,10 +70,10 @@
       }
     },
     "maker_list_tools": {
-      "description": "列出随包 Runtime 固定发布的官方 Maker 动态工具目录与参数 schema 快照；这不是当前工作区的实时可用性探测，实际调用仍受账号权限、项目状态和远端服务限制。调用 maker_call_tool 前必须先调用本工具；目标项目在其他目录时先让用户切换工作区，不通过 Shell、CLI、npx 或直接 MCP 绕行。"
+      "description": "列出随包 Runtime 固定发布的官方 Maker 动态工具目录与参数 schema 快照；这不是当前工作区的实时可用性探测，账号受限时可能返回账号限制提示而非动态目录，实际调用仍受账号权限、项目状态和远端服务限制。调用 maker_call_tool 前必须先调用本工具；目标项目在其他目录时先让用户切换工作区，不通过 Shell、CLI、npx 或直接 MCP 绕行。"
     },
     "maker_call_tool": {
-      "description": "调用 maker_list_tools 刚返回的官方 Maker 动态工具，只操作当前会话工作区，不通过 Shell、CLI、npx 或直接 MCP 绕行。缺少 .project/project.json 时说明构建会提交并推送项目，确认后调用 maker_build 再重试。missing_taptap_identity 仅在 Runtime 返回可安全恢复结果（execution_state 未提供或明确为 not_executed）时自动恢复一次；executed 或 unknown 时不自动重试。只有完整错误严格匹配“MCP error -32600: INSUFFICIENT_BALANCE”才说明积分不足并在确认后建议 Art 插件。",
+      "description": "调用 maker_list_tools 刚返回的官方 Maker 动态工具，只操作当前会话工作区，不通过 Shell、CLI、npx 或直接 MCP 绕行。缺少 .project/project.json 时说明构建会提交并推送项目，确认后调用 maker_build 再重试。missing_taptap_identity 仅在 Runtime 返回可安全恢复结果（execution_state 未提供或明确为 not_executed）时自动恢复一次；executed 或 unknown 时不自动重试。只有完整错误严格匹配“MCP error -32600: INSUFFICIENT_BALANCE”才说明积分不足并在确认后建议 Art 插件。 Maker 生图、生视频、生音频开关默认开启；关闭时不发送对应请求，仅提示该能力被禁用、请使用其他工具。生图含单张、批量和改图；生视频仅拦截创建任务，不影响查询；生音频含音乐、音效、配音、音色试听和确认。",
       "parameters": {
         "/properties/name": {
           "description": "动态工具名，来自最近一次 maker_list_tools。"

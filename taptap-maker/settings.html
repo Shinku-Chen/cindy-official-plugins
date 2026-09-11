@@ -108,6 +108,25 @@
   <p id="message" class="hint"></p>
 
   <section class="option project-section">
+    <label class="option-row">
+      <input id="maker-image-enabled" type="checkbox" role="switch" disabled aria-describedby="maker-image-hint">
+      <span class="option-title" data-i18n="imageEnabled">Allow Maker image generation</span>
+    </label>
+    <p id="maker-image-hint" class="hint" data-i18n="imageHint">On by default. Includes single images, batches and edits; may consume Maker credits. Turning off blocks future requests, not tasks already submitted.</p>
+    <label class="option-row">
+      <input id="maker-video-enabled" type="checkbox" role="switch" disabled aria-describedby="maker-video-hint">
+      <span class="option-title" data-i18n="videoEnabled">Allow Maker video generation</span>
+    </label>
+    <p id="maker-video-hint" class="hint" data-i18n="videoHint">On by default. Turning off blocks new video generation, but still allows querying submitted tasks.</p>
+    <label class="option-row">
+      <input id="maker-audio-enabled" type="checkbox" role="switch" disabled aria-describedby="maker-audio-hint">
+      <span class="option-title" data-i18n="audioEnabled">Allow Maker audio generation</span>
+    </label>
+    <p id="maker-audio-hint" class="hint" data-i18n="audioHint">On by default. Includes music, sound effects, dialogue, voice previews and confirmation; may consume credits or voice slots. Submitted tasks are not canceled.</p>
+    <p id="media-message" class="hint" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="option project-section">
     <div class="section-head">
       <div class="option-title" data-i18n="syncTitle">Sync Maker projects locally</div>
       <button id="refresh-projects" class="btn" type="button" data-i18n="refreshProjects">Refresh projects</button>
